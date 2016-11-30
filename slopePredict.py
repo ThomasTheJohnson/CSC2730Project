@@ -1,3 +1,5 @@
+import math
+
 class Table(dict):
 
     def __init__(self):
@@ -17,96 +19,89 @@ class Table(dict):
         idx = self.value_indices.get(i, None)
         return idx
 
-    def findB(self, i, j):
-        column1 = self.hasValues(i)
-        column2 = self.hasValues(j)
-        if column1 & column2:
-            overlap = column1.intersection(column2)
-            slope = 0
-            for hits in overlap:
-                slope += self.read(j,hits) - self.read(i,hits)
-            slope = (slope * 1.0)/ (1.0*len(overlap))
-            return slope
+        #calcB(T,i,j):
+    def findOneB(self, movieTable, movieI, movieJ):
+        slope = 0
+        ratedMovieI = movieTable.hasValues(movieI)
+        ratedMovieJ = movieTable.hasValues(movieJ)
+        if ratedMovieI and ratedMovieJ:
+            overlap = ratedMovieI.intersection(ratedMovieJ)
+            if overlap:
+                for users in overlap:
+                    slope += self.read(users,movieJ) - self.read(users,movieI)
+                B = (slope*1.0)/(1.0*len(overlap))
+                return B
+
+            else:
+                return None
         else:
-            return 0
+            return None
 
     def createSlopeTable(self):
-        slopeTable = Table()
-        users = 1
-        nestedUsers = 1
-        while(users < 19):
-            while(nestedUsers < users):
-                slopeTable.set(nestedUsers,users,self.findB(nestedUsers,users))
-                nestedUsers += 1
-            nestedUsers = 1
-            users += 1
-        return slopeTable
+        newSlopeTable = Table()
+        movies = 1
+        nestedMovies = 1
+        while(movies <= 1682):
+            while(nestedMovies < movies):
+                newSlopeTable.set(nestedMovies,movies,self.findOneB(movieTable,nestedMovies,movies))
+                nestedMovies += 1
+            nestedMovies = 1
+            movies += 1
+        return newSlopeTable
 
     def calculateRating(self, slopeTable, movie_id, user_id):
-        foundMovie = False
-        foundMovieRating = 0
-        predictedRating = 0
-        i = user_id - 1
-        j = user_id + 1
-        while(not foundMovie):
-            if self.read(i,movie_id) is None:
-                i -= 1
-            else:
-                foundMovie = True
-                foundMovieRating = self.read(i,movie_id)
-                print user_id
-                print movie_id
-                print foundMovieRating
-                print i
-                if slopeTable.read(user_id,i) is None:
-                    predictedRating = foundMovieRating + slopeTable.read(i, user_id)
-                    break
+        ratedMovies = self.hasValues(user_id)
+        avgMovieRatings = 0
+        counter = 0.0
+        for i in ratedMovies:
+            if(i < movie_id):
+                if(slopeTable.read(i, movie_id) is None):
+                    avgMovieRatings += self.read(user_id,i)
                 else:
-                    predictedRating = foundMovieRating + slopeTable.read(user_id,i)
-                    break
-            if self.read(j,movie_id) is None:
-                j += 1
-            else:
-                foundMovie = True
-                foundMovieRating = self.read(j,movie_id)
-                print user_id
-                print movie_id
-                print foundMovieRating
-                print j
-                if slopeTable.read(user_id,j) is None:
-                    predictedRating = foundMovieRating + slopeTable.read(j, user_id)
-                    break
-                else:
-                    predictedRating = foundMovieRating + slopeTable.read(user_id,j)
-                    break
+                    avgMovieRatings += self.read(user_id, i) + slopeTable.read(i, movie_id)
+                    counter += 1
+        if  counter == 0:
+            return 3.0
+        else:
+            predictedRating = avgMovieRatings/(counter)
+            return predictedRating
 
-        return predictedRating
+#Tables created to be written into from the given base file.
+userTable = Table()
+movieTable = Table()
 
 
-
-#Table Creations
-#slopeTable = Table()
-baseTable = Table()
-
-#reading data to baseTable
-f = open('u1.base','r')
-for line in f.readlines()[:1500]:
+f = open('data/u5.base','r')
+for line in f.readlines():
     line = line.split('\t')
     user_id = int(line[0])
     movie_id = int(line[1])
     rating = float(line[2])
-    print user_id, movie_id, rating
-    baseTable.set(user_id,movie_id,rating)
+    userTable.set(user_id, movie_id,rating)
+    movieTable.set(movie_id, user_id, rating)
+slopeTable = userTable.createSlopeTable()
 f.close()
-print "-----------------------------------------"
-slopeTable = baseTable.createSlopeTable()
-print slopeTable
-print "-----------------------------------------"
-print baseTable.calculateRating(slopeTable,6,1)
 
+#Opens up the test file as well as the file to be written.
+f2 = open('data/u5.test', 'r')
+f3 = open('u5.prediction', 'w')
+meanSquaredError = 0
+total_predictions = 0
+for line in f2.readlines():
+    line = line.split('\t')
+    user_id = int(line[0])
+    movie_id = int(line[1])
+    actual_rating = int(line[2])
+    guess = userTable.calculateRating(slopeTable, movie_id, user_id)
 
-#f2 = open('u1.test', 'w')
-#for line in f2.readlines()[:300]:
-#    line = line.split('\t')
-#    user_id = int(line[0])
-#    movie_id = int(line[1])
+    if guess < 9:
+        meanSquaredError += math.pow((guess)-(actual_rating), 2)
+        total_predictions += 1
+
+    f3.write(str(user_id) + "\t" + str(movie_id) + "\t" + str(guess) + "\n")
+
+f3.close()
+f2.close()
+
+meanSquaredError = meanSquaredError/total_predictions
+print meanSquaredError
